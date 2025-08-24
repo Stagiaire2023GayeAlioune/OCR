@@ -80,6 +80,29 @@ except Exception as e:
     st.error(f"❌ Erreur de connexion Mistral: {e}")
     st.stop()
 
+# ===================== FONCTIONS UTILITAIRES GLOBALES =====================
+MAX_RETRIES = 3  # Réduit pour plus de rapidité
+BACKOFF_BASE = 0.5  # Réduit pour des retry plus rapides
+
+def call_with_backoff(fn, *args, **kwargs):
+    for attempt in range(1, MAX_RETRIES + 1):
+        try:
+            return fn(*args, **kwargs)
+        except Exception as e:
+            error_msg = str(e).lower()
+            # Erreurs de timeout ou serveur occupé - on retry
+            if any(keyword in error_msg for keyword in ['timeout', '504', 'gateway', 'upstream', 'expire', 'server']):
+                if attempt == MAX_RETRIES:
+                    st.error(f"❌ Échec après {MAX_RETRIES} tentatives. Erreur: {e}")
+                    raise
+                delay = BACKOFF_BASE * (2 ** (attempt - 1))
+                st.warning(f"⏳ Timeout/erreur serveur (tentative {attempt}/{MAX_RETRIES}): {e}. Retry dans {delay:.1f}s...")
+                time.sleep(delay)
+            else:
+                # Autres erreurs - on ne retry pas
+                st.error(f"❌ Erreur non-récupérable: {e}")
+                raise
+
 # ===================== ROUTAGE SELON EXTENSION =====================
 is_pdf = suffix == ".pdf"
 is_img = suffix in {".png", ".jpg", ".jpeg"}
@@ -97,24 +120,12 @@ if is_pdf:
     # ===================== OPTIONS =====================
     PDF_PATH = str(tmp_path)  # <--- on ne change QUE le chemin
     INCLUDE_IMAGE_BASE64 = True
-    FLATTEN_ANNOTATIONS = True
-    MAX_RETRIES = 3
-    BACKOFF_BASE = 0.75
+    FLATTEN_ANNOTATIONS = False  # Désactivé pour plus de rapidité
     # ===================================================
 
     ORIGINAL_PDF_PATH = PDF_PATH
 
     # ---------- Utils ----------
-    def call_with_backoff(fn, *args, **kwargs):
-        for attempt in range(1, MAX_RETRIES + 1):
-            try:
-                return fn(*args, **kwargs)
-            except Exception as e:
-                if attempt == MAX_RETRIES:
-                    raise
-                delay = BACKOFF_BASE * (2 ** (attempt - 1))
-                st.warning(f"[WARN] {fn.__name__} tentative {attempt} échouée: {e}. Retry dans {delay:.2f}s...")
-                time.sleep(delay)
 
     def _extract_file_id(up):
         for attr in ("id", "file_id"):
@@ -221,8 +232,9 @@ if is_pdf:
     status_text.text("🧠 Structuration JSON en cours...")
     progress_bar.progress(80)
     
-    chat_response = client.chat.complete(
-        model="pixtral-12b-latest",
+    chat_response = call_with_backoff(
+        client.chat.complete,
+        model="pixtral-12b-latest",  # Modèle plus rapide
         messages=[
             {
                 "role": "user",
@@ -398,7 +410,8 @@ if is_img:
     status_text.text("🔍 Traitement OCR de l'image...")
     progress_bar.progress(60)
     
-    image_response = client.ocr.process(
+    image_response = call_with_backoff(
+        client.ocr.process,
         document=ImageURLChunk(image_url=base64_data_url),
         model="mistral-ocr-latest",
         include_image_base64=True
@@ -415,8 +428,9 @@ if is_img:
     status_text.text("🧠 Structuration JSON en cours...")
     progress_bar.progress(80)
     
-    chat_response = client.chat.complete(
-        model="pixtral-12b-latest",
+    chat_response = call_with_backoff(
+        client.chat.complete,
+        model="pixtral-12b-latest",  # Modèle plus rapide
         messages=[
             {
                 "role": "user",
