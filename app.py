@@ -5,8 +5,8 @@ from pathlib import Path
 import os, json, time, base64, io
 
 st.set_page_config(page_title="OCR PDF/Image → JSON (Mistral)", layout="wide")
-st.title("📄🖼️ OCR PDF / Image → JSON (Mistral)")
-st.caption("Upload un PDF ou une image : l’app route automatiquement vers la partie correspondante et affiche le JSON produit.")
+st.title("📄🖼️ OCR+LLM→ JSON")
+st.caption("Upload un Fichier : l’app route automatiquement et affiche le JSON produit.")
 
 # ===================== UPLOAD =====================
 uploaded = st.file_uploader(
@@ -494,3 +494,4 @@ if is_img:
 # -------------------------------------------------
 if not (is_pdf or is_img):
     st.error("Extension non supportée. Importez un fichier .pdf, .png, .jpg ou .jpeg.")
+
